@@ -1,8 +1,48 @@
 (()=>{'use strict';
 const data=JSON.parse(document.getElementById('scene').textContent);
 const pre=document.getElementById('map'),status=document.getElementById('status'),dlg=document.getElementById('dialog');
-const yes=document.getElementById('yes'),no=document.getElementById('no'),back=document.getElementById('back');
-if(back)back.href=data.back_href; // Town breadcrumb is current text, not a self-link
+const yes=document.getElementById('yes'),no=document.getElementById('no'),returnLink=document.getElementById('returnSignal');
+const HOME='https://nudisco-ai.whoismister-e.workers.dev/';
+const TOWN='https://auscitwi.github.io/our-town/';
+const ALLOWED=new Set(['nudisco-ai.whoismister-e.workers.dev','nudisco-ai.neocities.org','auscitwi.github.io']);
+function trustedReturn(value){
+ try{
+  const url=new URL(value,location.href);
+  if(!['https:'].includes(url.protocol)||!ALLOWED.has(url.hostname)||url.username||url.password||url.port)return null;
+  let path=decodeURIComponent(url.pathname);
+  if(url.hostname==='auscitwi.github.io'){
+   if(path==='/our-town/'||/^\/our-town\/houses\/h[0-9a-f]{16}\/(?:index\.html)?$/.test(path)||path==='/our-town/index.html'
+      ||path==='/nudisco-machine-map/'||path==='/nudisco-machine-map/reading-room.html')return url.href;
+   return null;
+  }
+  if(url.hostname==='nudisco-ai.neocities.org'){
+   if(['/','/void/','/timetravel/'].includes(path))return url.href;
+   return null;
+  }
+  const approved=['/','/index.html','/filter','/filter/','/time','/magic','/space','/space/','/void','/void/','/machine-map'];
+  if(approved.includes(path)||/^\/(?:filter\/)?post\/[^\/]+$/.test(path))return url.href;
+  return null;
+ }catch{return null;}
+}
+function updateReturn(){
+ if(!returnLink)return;
+ let from=null;
+ // An entry marker may carry ONLY a safe original-NUDISCO page URL.
+ try{
+  const params=new URLSearchParams(location.hash.slice(1));
+  if(params.has('from')&&params.get('from').length<512){
+   const value=trustedReturn(params.get('from'));
+   if(value && value.startsWith(HOME.slice(0,-1)))from=value;
+  }
+ }catch{}
+ const ref=trustedReturn(document.referrer);
+ const fallback=ref || (document.referrer?HOME:(data.back_href||HOME));
+ returnLink.href=from||fallback;
+ // A house reached from town goes back to its outdoor doorstep, not the last camera tile.
+ if(data.kind==='house' && ref && ref.startsWith(TOWN))returnLink.href=data.back_href;
+ if(returnLink.href===location.href)returnLink.href=data.back_href||HOME;
+}
+updateReturn();
 const solid=new Set(data.grid.solid.map(([x,y])=>x+','+y));
 const doorByCell=new Map(data.doors.map(d=>[d.x+','+d.y,d]));
 for(const key of doorByCell.keys())solid.add(key); // fail closed even if a future generator misses a door solid
@@ -10,7 +50,7 @@ const rows=data.grid.rows, W=data.grid.width,H=data.grid.height;
 const ponyCells=new Map();
 for(const n of data.npcs){for(let dx=0;dx<4;dx++)ponyCells.set((n.x+dx)+','+n.y,n);}
 const safeInk=s=>/^#[0-9a-f]{6}$/i.test(String(s))?String(s):'#96999a';
-let player={x:data.initial[0],y:data.initial[1]},target=null,steps=[],tick=null,active=null;
+let player={x:data.initial[0],y:data.initial[1]},target=null,steps=[],tick=null,active=null,choice='no';
 let cam={x:0,y:0,cols:70,lines:23},charW=8,lineH=18,padX=9,padY=9;
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const walkable=(x,y)=>x>=0&&y>=0&&x<W&&y<H&&!solid.has(x+','+y);
@@ -79,7 +119,13 @@ function nearbyTarget(x,y){
  for(const [nx,ny] of opts){const path=bfs(nx,ny);if(path && (!best||path.length<best.length))best=path;}
  return best;
 }
-function talk(npc){active=npc;dlg.hidden=false;no.focus();say('');}
+function setChoice(value){
+ choice=value==='yes'?'yes':'no';
+ yes.setAttribute('aria-pressed',String(choice==='yes'));
+ no.setAttribute('aria-pressed',String(choice==='no'));
+ (choice==='yes'?yes:no).focus({preventScroll:true});
+}
+function talk(npc){stop();active=npc;dlg.hidden=false;setChoice('no');say('');}
 function closeDialog(){active=null;dlg.hidden=true;pre.focus({preventScroll:true});}
 no.addEventListener('click',closeDialog);
 yes.addEventListener('click',()=>{if(!active)return;const href=active.post_href;stop();location.href=href;});
@@ -134,11 +180,20 @@ function interactNear(){
  say('nothing nearby');
 }
 document.addEventListener('keydown',e=>{
- if(!dlg.hidden){if(e.key==='Escape'){e.preventDefault();closeDialog();}return;}
- const dirs={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0],w:[0,-1],s:[0,1],a:[-1,0],d:[1,0]};
- // Navigation, buttons and form controls own their keys, not the game.
+ if(!dlg.hidden){
+  if(e.key==='Escape'){e.preventDefault();closeDialog();return;}
+  if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
+   e.preventDefault();setChoice(e.key==='ArrowLeft'?'yes':'no');return;
+  }
+  if(e.key===' '||e.key==='Enter'){
+   e.preventDefault();(choice==='yes'?yes:no).click();return;
+  }
+  return;
+ }
  const focused=e.target;
+ // Native controls keep their keyboard behavior; Space works anywhere else.
  if(focused instanceof Element && focused!==pre && focused.closest('a,button,input,textarea,select,summary,[contenteditable]'))return;
+ const dirs={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0],w:[0,-1],s:[0,1],a:[-1,0],d:[1,0]};
  const dir=dirs[e.key]||dirs[e.key.toLowerCase?.()];
  if(dir){
   e.preventDefault();stop();const xx=player.x+dir[0],yy=player.y+dir[1];
@@ -147,21 +202,22 @@ document.addEventListener('keydown',e=>{
   if(walkable(xx,yy)){player={x:xx,y:yy};say('');render();}else say('blocked');return;
  }
  if(e.key==='Escape'&&data.kind==='house'){e.preventDefault();location.assign(data.back_href);return;}
- if(e.key==='Enter'||e.key===' '){if(e.target===pre){e.preventDefault();interactNear();}}
+ if(e.key===' '){e.preventDefault();interactNear();return;}
+ if(e.key==='Enter' && e.target===pre){e.preventDefault();interactNear();}
 });
 window.addEventListener('resize',()=>{measure();render();});
-window.addEventListener('hashchange',startAtHash);
+window.addEventListener('hashchange',()=>{updateReturn();startAtHash();});
 function startAtHash(){
  let hash='';
- try { if(location.hash.length>1024)throw new Error('oversized fragment'); hash=decodeURIComponent(location.hash.slice(1)); }
+ try { if(location.hash.length>1024)throw new Error('oversized fragment'); hash=new URLSearchParams(location.hash.slice(1)).get('r')||new URLSearchParams(location.hash.slice(1)).get('xy')||''; }
  catch {say('destination unavailable');render();return;}
- if(hash.startsWith('r=')){
-  const rid=hash.slice(2),npc=data.npcs.find(n=>n.id===rid);
+ if(new URLSearchParams(location.hash.slice(1)).has('r')){
+  const rid=hash,npc=data.npcs.find(n=>n.id===rid);
   if(npc){const options=[...adjacent(npc.x,npc.y),[npc.x-1,npc.y+1],[npc.x-1,npc.y-1]];
    const found=options.find(([x,y])=>walkable(x,y));if(found)player={x:found[0],y:found[1]};say('');}
   else say('that pony is no longer here');
- }else if(hash.startsWith('xy=')){
-  const xy=hash.slice(3).split(',').map(Number);
+ }else if(new URLSearchParams(location.hash.slice(1)).has('xy')){
+  const xy=hash.split(',').map(Number);
   if(xy.length===2&&xy.every(Number.isInteger)){
    // Compatibility with first preview's links, which targeted the door tile.
    const oldDoor=doorByCell.get(xy[0]+','+xy[1]);
