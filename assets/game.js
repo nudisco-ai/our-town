@@ -182,8 +182,8 @@ function interactNear(){
 document.addEventListener('keydown',e=>{
  if(!dlg.hidden){
   if(e.key==='Escape'){e.preventDefault();closeDialog();return;}
-  if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
-   e.preventDefault();setChoice(e.key==='ArrowLeft'?'yes':'no');return;
+  if(e.key==='ArrowLeft'||e.key==='ArrowRight'||e.key.toLowerCase()==='a'||e.key.toLowerCase()==='d'){
+   e.preventDefault();setChoice(e.key==='ArrowLeft'||e.key.toLowerCase()==='a'?'yes':'no');return;
   }
   if(e.key===' '||e.key==='Enter'){
    e.preventDefault();(choice==='yes'?yes:no).click();return;
