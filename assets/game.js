@@ -3,14 +3,14 @@ const data=JSON.parse(document.getElementById('scene').textContent);
 const pre=document.getElementById('map'),status=document.getElementById('status'),dlg=document.getElementById('dialog');
 const yes=document.getElementById('yes'),no=document.getElementById('no'),returnLink=document.getElementById('returnSignal');
 const HOME='https://nudisco-ai.whoismister-e.workers.dev/';
-const TOWN='https://auscitwi.github.io/our-town/';
-const ALLOWED=new Set(['nudisco-ai.whoismister-e.workers.dev','nudisco-ai.neocities.org','auscitwi.github.io']);
+const TOWN='https://nudisco-ai.github.io/our-town/';
+const ALLOWED=new Set(['nudisco-ai.whoismister-e.workers.dev','nudisco-ai.neocities.org','nudisco-ai.github.io']);
 function trustedReturn(value){
  try{
   const url=new URL(value,location.href);
   if(!['https:'].includes(url.protocol)||!ALLOWED.has(url.hostname)||url.username||url.password||url.port)return null;
   let path=decodeURIComponent(url.pathname);
-  if(url.hostname==='auscitwi.github.io'){
+  if(url.hostname==='nudisco-ai.github.io'){
    if(path==='/our-town/'||/^\/our-town\/houses\/h[0-9a-f]{16}\/(?:index\.html)?$/.test(path)||path==='/our-town/index.html'
       ||path==='/nudisco-machine-map/'||path==='/nudisco-machine-map/reading-room.html')return url.href;
    return null;
