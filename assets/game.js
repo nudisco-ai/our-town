@@ -19,7 +19,7 @@ function trustedReturn(value){
    if(['/','/void/','/timetravel/'].includes(path))return url.href;
    return null;
   }
-  const approved=['/','/index.html','/filter','/filter/','/time','/magic','/space','/space/','/void','/void/','/machine-map'];
+  const approved=['/','/index.html','/filter','/filter/','/time','/magic','/space','/space/','/void','/void/','/machine-map','/feed','/filter/feed'];
   if(approved.includes(path)||/^\/(?:filter\/)?post\/[^\/]+$/.test(path))return url.href;
   return null;
  }catch{return null;}
@@ -39,7 +39,7 @@ function updateReturn(){
  const fallback=ref || (document.referrer?HOME:(data.back_href||HOME));
  returnLink.href=from||fallback;
  // A house reached from town goes back to its outdoor doorstep, not the last camera tile.
- if(data.kind==='house' && ref && ref.startsWith(TOWN))returnLink.href=data.back_href;
+ if(data.kind==='house' && ref && ref.startsWith(TOWN) && !from)returnLink.href=data.back_href;
  if(returnLink.href===location.href)returnLink.href=data.back_href||HOME;
 }
 updateReturn();
@@ -208,6 +208,28 @@ document.addEventListener('keydown',e=>{
 window.addEventListener('resize',()=>{measure();render();});
 window.addEventListener('hashchange',()=>{updateReturn();startAtHash();});
 function startAtHash(){
+ // A revision-scoped secret door opens only the exact resident generated from
+ // that already-public post revision. Unknown/edited visits never select a replacement.
+ try {
+  const params=new URLSearchParams(location.hash.slice(1));
+  if(params.has('visit')) {
+   if(location.hash.length>1024)throw new Error('oversized visit');
+   const key=JSON.parse(params.get('visit'));
+   if(!Array.isArray(key)||key.length!==4||typeof key[0]!=='string'||
+      !/^[a-f0-9]{64}$/.test(key[1])||!['title','body','attachment'].includes(key[2])||
+      !Number.isInteger(key[3])||key[3]<0||key[3]>1000)throw new Error('invalid visit');
+   const item=(Array.isArray(data.visits)?data.visits:[]).find(v=>
+     Array.isArray(v)&&v.length===5&&v.slice(0,4).every((x,i)=>x===key[i]));
+   if(item && ( /^#r=r[0-9a-f]{16}$/.test(item[4]) ||
+      /^houses\/h[0-9a-f]{16}\/index\.html#r=r[0-9a-f]{16}$/.test(item[4]) )) {
+    // Keep the exact trusted NUDISCO entrance across a house-page redirect.
+    const from=params.get('from');
+    const extra=typeof from==='string'&&from.length<=512?'&from='+encodeURIComponent(from):'';
+    location.replace(item[4]+extra);return;
+   }
+   say('that pony is no longer here');render();return;
+  }
+ } catch {say('destination unavailable');render();return;}
  let hash='';
  try { if(location.hash.length>1024)throw new Error('oversized fragment'); hash=new URLSearchParams(location.hash.slice(1)).get('r')||new URLSearchParams(location.hash.slice(1)).get('xy')||''; }
  catch {say('destination unavailable');render();return;}
