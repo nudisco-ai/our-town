@@ -1,0 +1,175 @@
+(()=>{'use strict';
+const data=JSON.parse(document.getElementById('scene').textContent);
+const pre=document.getElementById('map'),status=document.getElementById('status'),dlg=document.getElementById('dialog');
+const yes=document.getElementById('yes'),no=document.getElementById('no'),back=document.getElementById('back');
+if(back)back.href=data.back_href; // Town breadcrumb is current text, not a self-link
+const solid=new Set(data.grid.solid.map(([x,y])=>x+','+y));
+const doorByCell=new Map(data.doors.map(d=>[d.x+','+d.y,d]));
+for(const key of doorByCell.keys())solid.add(key); // fail closed even if a future generator misses a door solid
+const rows=data.grid.rows, W=data.grid.width,H=data.grid.height;
+const ponyCells=new Map();
+for(const n of data.npcs){for(let dx=0;dx<4;dx++)ponyCells.set((n.x+dx)+','+n.y,n);}
+const safeInk=s=>/^#[0-9a-f]{6}$/i.test(String(s))?String(s):'#96999a';
+let player={x:data.initial[0],y:data.initial[1]},target=null,steps=[],tick=null,active=null;
+let cam={x:0,y:0,cols:70,lines:23},charW=8,lineH=18,padX=9,padY=9;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const walkable=(x,y)=>x>=0&&y>=0&&x<W&&y<H&&!solid.has(x+','+y);
+const enc=s=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const isPony=(x,y)=>ponyCells.has(x+','+y);
+function cls(c,x,y){if(player.x===x&&player.y===y)return'player';if(isPony(x,y))return'pony';if(c==='D')return'door';if(c==='Y')return'tree';if(c==='+'||c==='|'||c==='-')return'house';if(c==='=')return'road';if(c==='~')return'water';if(c==='*')return'flower';return'';}
+function measure(){
+ const probe=document.createElement('span');probe.textContent='MMMMMMMMMM';
+ probe.style.cssText='position:absolute;visibility:hidden;white-space:pre;font:inherit;';pre.append(probe);
+ charW=probe.getBoundingClientRect().width/10;probe.remove();
+ const cs=getComputedStyle(pre);lineH=parseFloat(cs.lineHeight)||18;padX=parseFloat(cs.paddingLeft)||0;padY=parseFloat(cs.paddingTop)||0;
+ cam.cols=clamp(Math.floor((pre.clientWidth-2*padX)/charW)-1,20,95);
+ cam.lines=clamp(Math.floor((innerHeight-170)/lineH),14,27);
+}
+function render(){
+ cam.x=clamp(player.x-Math.floor(cam.cols/2),0,Math.max(0,W-cam.cols));
+ cam.y=clamp(player.y-Math.floor(cam.lines/2),0,Math.max(0,H-cam.lines));
+ let output='';
+ for(let y=cam.y;y<Math.min(H,cam.y+cam.lines);y++){
+  let last='',lastInk='',chunk='';
+  const flush=()=>{if(!chunk)return;
+   if(last==='pony'){const [ink,edge]=lastInk.split('|');output+='<span class="pony" style="--pony-ink:'+safeInk(ink)+';--pony-edge:'+safeInk(edge)+'">'+enc(chunk)+'</span>';}
+   else output+=last?'<span class="'+last+'">'+enc(chunk)+'</span>':enc(chunk);
+   chunk='';};
+  for(let x=cam.x;x<Math.min(W,cam.x+cam.cols);x++){
+    const c=player.x===x&&player.y===y?'@':rows[y][x];const curr=cls(c,x,y);
+    const npc=ponyCells.get(x+','+y);
+    const ink=curr==='pony'&&npc ? npc.ink+'|'+npc.edge : '';
+    if(last!==curr||lastInk!==ink){flush();last=curr;lastInk=ink;}chunk+=c;
+  }
+  flush();output+='\n';
+ }
+ pre.innerHTML=output;
+}
+function say(message){status.textContent=message;}
+function adjacent(x,y){return[[x-1,y],[x+1,y],[x,y-1],[x,y+1]];}
+function doorstep(d){return[d.x,data.kind==='town'?d.y+1:d.y-1];}
+function goDoor(d){const [x,y]=doorstep(d);moveAlong(bfs(x,y),()=>location.assign(d.href));}
+function bfs(x,y){
+ if(!walkable(x,y))return null;
+ const key=(a,b)=>a+','+b;let queue=[[player.x,player.y]],head=0,seen=new Set([key(player.x,player.y)]),parents=new Map();
+ while(head<queue.length){
+  const [cx,cy]=queue[head++],k=key(cx,cy);if(cx===x&&cy===y){
+   const path=[];let now=k;
+   while(now!==key(player.x,player.y)){const [xx,yy]=now.split(',').map(Number);path.push([xx,yy]);now=parents.get(now);}return path.reverse();
+  }
+  for(const [nx,ny] of adjacent(cx,cy)){const nk=key(nx,ny);if(walkable(nx,ny)&&!seen.has(nk)){seen.add(nk);parents.set(nk,k);queue.push([nx,ny]);}}
+ }
+ return null;
+}
+function stop(){steps=[];if(tick){clearInterval(tick);tick=null;}target=null;}
+function moveAlong(path,callback){
+ stop();if(path===null){say('no path there');return;}
+ say(''); // A previous blocked status must never survive a successful move.
+ steps=path;
+ if(!steps.length){callback?.();return;}
+ tick=setInterval(()=>{
+  const step=steps.shift();if(!step){stop();return;}
+  player={x:step[0],y:step[1]};render();
+  if(!steps.length){stop();callback?.();}
+ },58);
+}
+function nearbyTarget(x,y){
+ const opts=[[x,y],...adjacent(x,y),[x+1,y+1],[x-1,y+1],[x-1,y-1],[x+1,y-1]];
+ let best=null;
+ for(const [nx,ny] of opts){const path=bfs(nx,ny);if(path && (!best||path.length<best.length))best=path;}
+ return best;
+}
+function talk(npc){active=npc;dlg.hidden=false;no.focus();say('');}
+function closeDialog(){active=null;dlg.hidden=true;pre.focus({preventScroll:true});}
+no.addEventListener('click',closeDialog);
+yes.addEventListener('click',()=>{if(!active)return;const href=active.post_href;stop();location.href=href;});
+// Mouse/touch taps on walls, trees and the fountain should not feel like
+// broken movement. Walk to the nearest reachable edge, never through solids.
+function approachSolid(x,y){
+ for(let radius=1;radius<=4;radius++){
+  let best=null;
+  for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++){
+   if(Math.max(Math.abs(dx),Math.abs(dy))!==radius)continue;
+   const xx=x+dx,yy=y+dy;
+   if(!walkable(xx,yy))continue;
+   const path=bfs(xx,yy);
+   if(path && (!best || path.length<best.length))best=path;
+  }
+  if(best)return best;
+ }
+ return null;
+}
+function clickAt(x,y){
+ if(!dlg.hidden)return;
+ const npc=data.npcs.find(n=>n.y===y&&x>=n.x&&x<n.x+4);
+ if(npc){moveAlong(nearbyTarget(npc.x-1,npc.y),()=>talk(npc));return;}
+ // A click anywhere on a visible house (including its roof title) leads
+ // toward the real door. The house walls and the door remain solid.
+ const house=data.kind==='town' ? data.doors.find(d=>{
+  const b=d.bounds;
+  return b && x>=b[0]&&x<b[0]+b[2]&&y>=b[1]&&y<b[1]+b[3]
+   && (y>=b[1]+2 || rows[y][x]!==' ');
+ }) : null;
+ // In a house, a one-cell margin around the exit makes it practical
+ // to tap on small touch screens. In town, the house hitbox is the target.
+ const door=doorByCell.get(x+','+y) || house || (data.kind==='house'
+  ? data.doors.find(d=>Math.abs(d.x-x)<=1&&Math.abs(d.y-y)<=1) : null);
+ if(door){goDoor(door);return;}
+ if(!walkable(x,y)){
+  const path=approachSolid(x,y);
+  if(path)moveAlong(path);else say('blocked');
+  return;
+ }
+ moveAlong(bfs(x,y));
+}
+pre.addEventListener('click',e=>{
+ const r=pre.getBoundingClientRect();
+ const x=cam.x+Math.floor((e.clientX-r.left-padX)/charW),y=cam.y+Math.floor((e.clientY-r.top-padY)/lineH);
+ if(x>=0&&y>=0&&x<W&&y<H)clickAt(x,y);
+ pre.focus({preventScroll:true});
+});
+function interactNear(){
+ for(const n of data.npcs){if(Math.abs(n.x-player.x)<=3&&Math.abs(n.y-player.y)<=2){talk(n);return;}}
+ for(const d of data.doors){const [ax,ay]=doorstep(d);if(player.x===ax&&player.y===ay){location.assign(d.href);return;}}
+ say('nothing nearby');
+}
+document.addEventListener('keydown',e=>{
+ if(!dlg.hidden){if(e.key==='Escape'){e.preventDefault();closeDialog();}return;}
+ const dirs={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0],w:[0,-1],s:[0,1],a:[-1,0],d:[1,0]};
+ // Navigation, buttons and form controls own their keys, not the game.
+ const focused=e.target;
+ if(focused instanceof Element && focused!==pre && focused.closest('a,button,input,textarea,select,summary,[contenteditable]'))return;
+ const dir=dirs[e.key]||dirs[e.key.toLowerCase?.()];
+ if(dir){
+  e.preventDefault();stop();const xx=player.x+dir[0],yy=player.y+dir[1];
+  const door=doorByCell.get(xx+','+yy);
+  if(door){const [ax,ay]=doorstep(door);if(player.x===ax&&player.y===ay)location.assign(door.href);else say('approach the door first');return;}
+  if(walkable(xx,yy)){player={x:xx,y:yy};say('');render();}else say('blocked');return;
+ }
+ if(e.key==='Escape'&&data.kind==='house'){e.preventDefault();location.assign(data.back_href);return;}
+ if(e.key==='Enter'||e.key===' '){if(e.target===pre){e.preventDefault();interactNear();}}
+});
+window.addEventListener('resize',()=>{measure();render();});
+window.addEventListener('hashchange',startAtHash);
+function startAtHash(){
+ let hash='';
+ try { if(location.hash.length>1024)throw new Error('oversized fragment'); hash=decodeURIComponent(location.hash.slice(1)); }
+ catch {say('destination unavailable');render();return;}
+ if(hash.startsWith('r=')){
+  const rid=hash.slice(2),npc=data.npcs.find(n=>n.id===rid);
+  if(npc){const options=[...adjacent(npc.x,npc.y),[npc.x-1,npc.y+1],[npc.x-1,npc.y-1]];
+   const found=options.find(([x,y])=>walkable(x,y));if(found)player={x:found[0],y:found[1]};say('');}
+  else say('that pony is no longer here');
+ }else if(hash.startsWith('xy=')){
+  const xy=hash.slice(3).split(',').map(Number);
+  if(xy.length===2&&xy.every(Number.isInteger)){
+   // Compatibility with first preview's links, which targeted the door tile.
+   const oldDoor=doorByCell.get(xy[0]+','+xy[1]);
+   const next=oldDoor?doorstep(oldDoor):xy;
+   if(walkable(...next))player={x:next[0],y:next[1]};
+  }
+ }
+ render();
+}
+measure();startAtHash();
+})();
