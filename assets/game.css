@@ -1,6 +1,6 @@
 :root{color-scheme:dark;background:#090c0d;color:#cbd2c5;font:13px/1.5 ui-monospace,Menlo,Consolas,"Liberation Mono",monospace}
 *{box-sizing:border-box}body{margin:0 auto;padding:0 12px;max-width:1020px}
-header{border-bottom:1px solid #303a39;padding:13px 1px;display:flex;justify-content:space-between;gap:16px;align-items:center}
+header{border-bottom:1px solid #303a39;min-height:54px;padding:0 1px;display:flex;justify-content:space-between;gap:16px;align-items:center}
 .current{color:#e1eec9;letter-spacing:.03em}.slash{color:#81958b;white-space:pre}a,button{color:#cfe1b0;font:inherit;text-decoration:none}
 a:hover,button:hover{text-decoration:underline}a:focus-visible,button:focus-visible{outline:1px dotted #d7debd;outline-offset:4px}
 .map-wrap{margin:16px 0 9px;border:1px solid #2d3837;overflow:hidden;background:#080c0d;min-width:0}
@@ -18,3 +18,7 @@ header nav{display:flex;flex-wrap:wrap;gap:0;justify-content:flex-start;align-it
 .controls{position:fixed;bottom:max(10px,env(safe-area-inset-bottom));right:14px;max-width:min(350px,80vw);text-align:right;color:#889c91;background:#090c0df0;padding:2px 5px;font-size:10px;line-height:1.55;pointer-events:none;z-index:5}
 .dialog .choices button[aria-pressed="true"]{color:#faffc2;text-decoration:underline;text-underline-offset:3px}
 @media(max-width:580px){header{gap:10px}#returnSignal{font-size:12px}.controls{font-size:9px;max-width:70vw}}
+
+/* NUDISCO shared navigation cue: ordinary links only; the map and its input semantics are unchanged. */
+header a:hover,header a:focus-visible{color:#efffcd;text-decoration:underline;text-underline-offset:.24em;background:transparent}
+.choices button:hover,.choices button:focus-visible{color:#faffc2;text-decoration:underline;text-underline-offset:.24em}
