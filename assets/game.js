@@ -202,8 +202,7 @@ document.addEventListener('keydown',e=>{
   if(walkable(xx,yy)){player={x:xx,y:yy};say('');render();}else say('blocked');return;
  }
  if(e.key==='Escape'&&data.kind==='house'){e.preventDefault();location.assign(data.back_href);return;}
- if(e.key===' '){e.preventDefault();interactNear();return;}
- if(e.key==='Enter' && e.target===pre){e.preventDefault();interactNear();}
+ if(e.key===' '||e.key==='Enter'){e.preventDefault();interactNear();return;}
 });
 window.addEventListener('resize',()=>{measure();render();});
 window.addEventListener('hashchange',()=>{updateReturn();startAtHash();});
