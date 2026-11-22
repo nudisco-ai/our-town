@@ -1,5 +1,94 @@
 (()=>{'use strict';
-const data=JSON.parse(document.getElementById('scene').textContent);
+// nudisco-our-town-quantum-mayor-v1
+// The Mayor is a deliberately authored civic character, not a generated post
+// resident or a new private identity/plot record. Existing residents stay intact.
+function nudiscoMayorScene(scene, currentLocation) {
+  if (!scene || scene.kind !== 'town') return scene;
+  const MAYOR_ID = 'r7c0a14e91120b269';
+  const MAYOR_PAGE = 'https://nudisco-ai.whoismister-e.workers.dev/research/quantum-elements-of-harmony/';
+  const params = new URLSearchParams(currentLocation.search || '');
+  const markerY = scene.grid.rows.findIndex(row => row.includes('town.square'));
+  const markerX = markerY < 0 ? -1 : scene.grid.rows[markerY].indexOf('town.square');
+  const hallX = markerX + 34, hallY = markerY - 1, hallW = 29, hallH = 12;
+  const exitX = hallX + Math.floor(hallW / 2);
+  const exitY = hallY + hallH - 1;
+  const homeHref = './#xy=' + exitX + ',' + (exitY + 1);
+  if (markerY < 0 || markerX < 0) return scene;
+  if (params.get('mayor') === 'hall') {
+    const width = 37, height = 17;
+    const rows = Array.from({length: height}, () => ' '.repeat(width));
+    const walls = [];
+    function place(y, x, message) {
+      const line = rows[y];
+      rows[y] = line.slice(0, x) + message + line.slice(x + message.length);
+    }
+    const center = message => message.padStart(Math.floor((width - 4 + message.length) / 2), ' ').padEnd(width - 4, ' ');
+    place(1, 1, '+' + '-'.repeat(width - 4) + '+');
+    for (let y = 2; y < 15; y++) place(y, 1, '|' + ' '.repeat(width - 4) + '|');
+    place(15, 1, '+' + '-'.repeat(width - 4) + '+');
+    const doorX = Math.floor(width / 2);
+    place(15, doorX, 'D');
+    place(2, 2, center("MAYOR'S HALL"));
+    place(4, 2, center('QUANTUM HARMONY'));
+    place(6, 2, center('*   *   *   *'));
+    place(8, 2, center('public research / friendship'));
+    place(10, 8, 'pony');
+    place(12, 2, center('the mayor welcomes visitors'));
+    for (let y = 1; y <= 15; y++) for (let x = 1; x <= width - 2; x++) {
+      if (y === 1 || y === 15 || x === 1 || x === width - 2) walls.push([x, y]);
+    }
+    Object.assign(scene, {
+      kind: 'house',
+      grid: {width, height, rows, solid: walls},
+      initial: [doorX, 14],
+      doors: [{id: 'mayor-exit', x: doorX, y: 15, href: homeHref}],
+      npcs: [{id: MAYOR_ID, x: 8, y: 10, ink: '#CDE67E', edge: '#093434', mayor: true, post_href: MAYOR_PAGE}],
+      visits: [],
+      back_href: homeHref
+    });
+    return scene;
+  }
+  // The first-built town has a quiet, vacant lot immediately east of the
+  // square. Locate the square by its authored marker, never by resident IDs.
+  if (markerY < 0 || markerX < 0 || hallX < 1 || hallY < 1 ||
+      hallX + hallW >= scene.grid.width || hallY + hallH >= scene.grid.height ||
+      !Array.isArray(scene.grid.solid) || !Array.isArray(scene.doors)) return scene;
+  const occupied = new Set(scene.grid.solid.map(([x,y]) => x + ',' + y));
+  for (let y = hallY; y < hallY + hallH; y++) {
+    if (scene.grid.rows[y].slice(hallX, hallX + hallW) !== ' '.repeat(hallW)) return scene;
+    for (let x = hallX; x < hallX + hallW; x++) if (occupied.has(x + ',' + y)) return scene;
+  }
+  if (scene.doors.some(d => d.id === 'mayor-hall')) return scene;
+  const border = '+' + '-'.repeat(hallW - 2) + '+';
+  const inner = text => '|' + text.padStart(Math.floor((hallW - 2 + text.length) / 2), ' ').padEnd(hallW - 2, ' ') + '|';
+  const drawing = [
+    border,
+    inner('***   TOWN HALL   ***'),
+    inner("MAYOR'S HALL"),
+    inner(''),
+    inner('QUANTUM HARMONY'),
+    inner(''),
+    inner('*    FRIENDSHIP    *'),
+    inner(''),
+    inner('open to everypony'),
+    inner(''),
+    inner(''),
+    border
+  ];
+  drawing[hallH - 1] = drawing[hallH - 1].slice(0, Math.floor(hallW / 2)) + 'D' + drawing[hallH - 1].slice(Math.floor(hallW / 2) + 1);
+  const walls = [];
+  for (let dy = 0; dy < hallH; dy++) {
+    const y = hallY + dy, row = scene.grid.rows[y];
+    scene.grid.rows[y] = row.slice(0, hallX) + drawing[dy] + row.slice(hallX + hallW);
+    for (let dx = 0; dx < hallW; dx++) {
+      if (dy === 0 || dy === hallH - 1 || dx === 0 || dx === hallW - 1) walls.push([hallX + dx, y]);
+    }
+  }
+  scene.grid.solid.push(...walls);
+  scene.doors.push({id: 'mayor-hall', x: exitX, y: exitY, href: '?mayor=hall', bounds: [hallX, hallY, hallW, hallH]});
+  return scene;
+}
+const data=nudiscoMayorScene(JSON.parse(document.getElementById('scene').textContent), location);
 const pre=document.getElementById('map'),status=document.getElementById('status'),dlg=document.getElementById('dialog');
 const yes=document.getElementById('yes'),no=document.getElementById('no'),returnLink=document.getElementById('returnSignal');
 const HOME='https://nudisco-ai.whoismister-e.workers.dev/';
@@ -125,7 +214,7 @@ function setChoice(value){
  no.setAttribute('aria-pressed',String(choice==='no'));
  (choice==='yes'?yes:no).focus({preventScroll:true});
 }
-function talk(npc){stop();active=npc;dlg.hidden=false;setChoice('no');say('');}
+function talk(npc){stop();active=npc;dlg.hidden=false;dlg.querySelector('span').textContent=npc.mayor===true?'read the Quantum Harmony manuscript?':'watch performance?';setChoice('no');say('');}
 function closeDialog(){active=null;dlg.hidden=true;pre.focus({preventScroll:true});}
 no.addEventListener('click',closeDialog);
 yes.addEventListener('click',()=>{if(!active)return;const href=active.post_href;stop();location.href=href;});
