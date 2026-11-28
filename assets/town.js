@@ -121,12 +121,13 @@
   function setArea(next, options = {}) {
     stopWalk(); interior = null; area = Math.max(0, Math.min(laneCount, next));
     player = {x:43,y:options.y === undefined ? 18 : options.y};
-    $('district').value = String(area); buildMap(); renderMap();
+    buildMap(); renderMap();
     if (!options.quiet) status('');
   }
   function navigateArea(next, options = {}) {
     setArea(next, options);
     welcome();
+    $('map').focus({preventScroll:true});
     setRoute('district', String(area));
   }
   function cell(x, y, char, type = 'ground', solid = false) {
@@ -150,7 +151,6 @@
     cell(dx,dy,'D','door',true);
     const act={id,kind,x:dx,y:dy,approach:{x:dx,y:dy+1},bounds:{x,y,w,h}};
     actions.push(act);
-    for(let j=dy+1;j<=18&&j<HEIGHT;j++) cell(dx,j,':','path');
     return act;
   }
   function buildMap() {
@@ -162,32 +162,37 @@
       if ((x*31+y*17+seed)%43===0) cell(x,y,'.','ground');
       if ((x*7+y*31+seed)%173===0) cell(x,y,'*','flower');
     }
+    // Reserve the central crossroads and keep all building footprints outside it.
+    const roadRow=y=>{for(let x=0;x<WIDTH;x++)cell(x,y,':','path');};
     for(let y=0;y<HEIGHT;y++) { cell(42,y,':','path'); cell(43,y,':','path'); }
-    for(let x=0;x<WIDTH;x++) { cell(x,17,':','path'); cell(x,18,':','path'); }
+    roadRow(17);roadRow(18);
     if (area===0) {
-      building('mayor',4,3,24,10,'town hall','landmark');
+      const hall=building('mayor',4,3,24,10,'town hall','landmark');
+      for(let y=hall.approach.y;y<17;y++)cell(hall.x,y,':','path');
       writing(63,4,'garden','sign');tree(61,7);tree(76,8);writing(65,10,'*  .  *  .  *','flower');
       building('radio',4,23,24,9,'radio garden','landmark');
       building('arrivals',58,23,24,9,'arrivals','landmark');
-      writing(36,3,'our town','roof'); writing(33,5,'town square','sign');
+      roadRow(32);roadRow(33);
+      writing(31,3,'our town','roof'); writing(29,5,'town square','sign');
       tree(32,9);tree(50,9);tree(30,25);tree(52,25);
       writing(35,14,'.----.','water');writing(35,15,'( ~~ )','water');writing(35,16,"'----'",'water');
       for(let y=14;y<=16;y++)for(let x=35;x<=40;x++)solids.add(key(x,y));
       writing(46,14,'[___]','wall');writing(46,15,' | | ','wall');
-      writing(34,22,'*  .  *  .  *','flower');
-      writing(34,34,'to the neighborhoods','sign');
+      writing(28,22,'*  .  *  .  *','flower');
+      writing(20,34,'to the neighborhoods','sign');
     } else {
-      const lots=[{x:3,y:3},{x:32,y:3},{x:61,y:3},{x:3,y:23},{x:32,y:23},{x:61,y:23}];
+      // Six existing plot IDs, arranged in two columns of three.
+      // Each southern-facing door opens directly onto a cross street.
+      for(const y of [8,9,30,31])roadRow(y);
+      const lots=[{x:6,y:1},{x:58,y:1},{x:6,y:10},{x:58,y:10},{x:6,y:23},{x:58,y:23}];
       for(let i=0;i<PER_LANE;i++) {
         const h=homes.find(h=>h.plot===(area-1)*PER_LANE+i), lot=lots[i];
         if(h) {
-          const door=building(h.id,lot.x,lot.y,22,9,'home '+String(h.plot+1).padStart(2,'0'),'home');
-          if(lot.y>18) { for(let y=19;y<lot.y;y++)cell(door.x,y,':','path'); }
-          writing(lot.x+3,lot.y+6,'_  .  _  .  _','flower');
-        } else { tree(lot.x+8,lot.y+2); writing(lot.x+5,lot.y+6,'green space','ground'); }
+          building(h.id,lot.x,lot.y,22,7,'home '+String(h.plot+1).padStart(2,'0'),'home');
+        } else { tree(lot.x+8,lot.y+1); writing(lot.x+5,lot.y+5,'green space','ground'); }
       }
-      tree(26,5);tree(55,25);
-      writing(2,15,'< '+laneName(area).slice(0,27)+' >','sign');
+      tree(31,3);tree(50,24);
+      writing(2,20,'< '+laneName(area).slice(0,27)+' >','sign');
       writing(57,20,'neighborhood path','ground');
     }
     updateMapLabels();
@@ -225,9 +230,7 @@
     }
   }
   function updateMapLabels() {
-    $('place-name').textContent=placeName(); $('district').value=String(area); $('district').disabled=!!interior;
-    $('lane-index').textContent=String(area+1).padStart(2,'0')+' / '+String(laneCount+1).padStart(2,'0');
-    $('previous-lane').disabled=!!interior||area===0; $('next-lane').disabled=!!interior||area===laneCount;
+    $('place-name').textContent=placeName();
   }
   function routine(r) {
     const hour=clock.getHours(), seed=hash(r.id);
@@ -312,7 +315,7 @@
   const atApproach = action => player.x===action.approach.x && player.y===action.approach.y;
   const walkable = (x,y) => Number.isInteger(x)&&Number.isInteger(y)&&x>=0&&x<WIDTH&&y>=0&&y<HEIGHT&&!solids.has(key(x,y));
   function perform(action) {
-    if(!action || !atApproach(action)){status('approach the entrance first.');return;}
+    if(!action || !atApproach(action)){status('blocked');return;}
     if(action.kind==='exit'){leaveInterior();return;}
     if(action.kind==='home'){enterHome(action.id);return;}
     if(action.id==='mayor'){enterHall();return;}
@@ -337,10 +340,8 @@
     if(!interior&&y>=HEIGHT&&area<laneCount){navigateArea(area+1,{y:1});return;}
     const entrance=actions.find(a=>a.x===x&&a.y===y);
     if(entrance){perform(entrance);return;}
-    if(!walkable(x,y)){status('blocked.');return;}
-    player={x,y};renderMap();const close=closestAction();
-    if(close)status(close.kind==='pony'?'near '+lower(close.name,'a neighbor')+'. press enter to talk.':close.kind==='exit'?'exit. press enter.':close.kind==='home'?'home entrance. press enter to visit.':close.id+' nearby. press enter.');
-    else status('');
+    if(!walkable(x,y)){status('blocked');return;}
+    player={x,y};renderMap();status('');
   }
   function pathTo(goal) {
     if(!walkable(goal.x,goal.y))return null;
@@ -359,7 +360,8 @@
   }
   function walkTo(goal,done) {
     stopWalk();const path=pathTo(goal);
-    if(!path){status('no path to that spot. try the door.');return;}
+    if(!path){status('blocked');return;}
+    status('');
     const generation=walkGeneration;
     if(reducedMotion.matches){player=goal;renderMap();if(done)done();return;}
     let step=0;
@@ -367,7 +369,7 @@
       if(generation!==walkGeneration)return;
       if(document.hidden){stopWalk();return;}
       if(step>=path.length){walkTimer=null;if(done)done();return;}
-      const destination=path[step++];if(!walkable(destination.x,destination.y)){stopWalk();status('path blocked.');return;}
+      const destination=path[step++];if(!walkable(destination.x,destination.y)){stopWalk();status('blocked');return;}
       player=destination;renderMap();walkTimer=setTimeout(next,Math.max(26,85-Math.floor(path.length/2)));
     };next();
   }
@@ -383,11 +385,11 @@
       for(let dx=0;dx<PONY.length;dx++)options.push({x:pony.x+dx,y:pony.y-1},{x:pony.x+dx,y:pony.y+1});
       options.push({x:pony.x-1,y:pony.y},{x:pony.x+PONY.length,y:pony.y});
       const reachable=options.filter(o=>o.x>=0&&o.x<WIDTH&&o.y>=0&&o.y<HEIGHT&&!occupied.has(key(o.x,o.y))).map(o=>({o,path:pathTo(o)})).filter(a=>a.path!==null).sort((a,b)=>a.path.length-b.path.length);
-      if(reachable.length)walkTo(reachable[0].o,()=>pony.civic?showMayor():showResident(pony.id));else status('no path to this pony.');return;
+      if(reachable.length)walkTo(reachable[0].o,()=>pony.civic?showMayor():showResident(pony.id));else status('blocked');return;
     }
     const action=actions.find(a=>a.x===x&&a.y===y||a.bounds&&x>=a.bounds.x&&x<a.bounds.x+a.bounds.w&&y>=a.bounds.y&&y<a.bounds.y+a.bounds.h);
     if(action){walkTo(action.approach,()=>perform(action));return;}
-    walkTo({x,y},()=>status('destination reached.'));
+    walkTo({x,y});
   }
 
   function inspectorStart(kicker,title) {
@@ -454,7 +456,7 @@
     const frag=document.createDocumentFragment();
     for(const r of filtered.slice(0,residentLimit)) {
       const row=node('div',null,'resident-row'),name=node('div',null,'resident-name'),mark=node('span',PONY,'resident-mark');colorize(mark,r);
-      name.append(mark,node('span',lower(r.name,'pony')));row.append(name,node('span',lower(r.occupation),'resident-job'),node('span',laneName(laneForHome(homeById.get(r.home))),'resident-lane'),button('locate',()=>gotoResident(r.id),'row-visit'));frag.append(row);
+      name.append(mark,node('span',lower(r.name,'pony')));row.append(name,node('span',lower(r.occupation),'resident-job'),node('span',laneName(laneForHome(homeById.get(r.home)))+' · home '+String(homeById.get(r.home).plot+1).padStart(2,'0'),'resident-lane'));frag.append(row);
     }
     if(!filtered.length)frag.append(node('p','no matching residents · search by name or calling.','empty-note'));
     $('resident-list').replaceChildren(frag);$('more-residents').hidden=filtered.length<=residentLimit;
@@ -513,13 +515,10 @@
 
   $('resident-count').textContent=String(residents.length);$('home-count').textContent=String(homes.length);
   $('source-note').textContent=lower(data.source?.label,lower(data.recovery?.label,'a town grown from published words on nudisco ai.'));
-  const opts=document.createDocumentFragment();for(let i=1;i<=laneCount;i++){const o=node('option',laneName(i));o.value=String(i);opts.append(o);}$('district').append(opts);
   for(const b of document.querySelectorAll('[data-board]'))b.addEventListener('click',()=>{if(interior==='mayor')showView(b.dataset.board);});
   for(const b of document.querySelectorAll('.back-board'))b.addEventListener('click',showBoard);
   $('close-dialog').addEventListener('click',welcome);
   $('interaction').addEventListener('close',()=>{if($('interaction').open)return;if(currentView!=='town'){currentView='town';selectedResident=null;fitMap();} $('map').focus({preventScroll:true});});
-  $('district').addEventListener('change',()=>navigateArea(Number($('district').value)));
-  $('previous-lane').addEventListener('click',()=>navigateArea(area-1));$('next-lane').addEventListener('click',()=>navigateArea(area+1));
   $('interact').addEventListener('click',()=>{interact();if(!$('interaction').open)$('map').focus({preventScroll:true});});$('map').addEventListener('click',mapClick);
   for(const b of document.querySelectorAll('[data-step]'))b.addEventListener('click',()=>{const [x,y]=b.dataset.step.split(',').map(Number);move(x,y);if(!$('interaction').open)$('map').focus({preventScroll:true});});
   document.addEventListener('keydown',event=>{
